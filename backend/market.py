@@ -6,7 +6,6 @@ LLM получает уже готовые числа — так разбор о
 """
 import hashlib
 import json
-import math
 import statistics
 import time
 
@@ -269,7 +268,16 @@ def portfolio_stats(tokens, fg=None):
         mood = "Распродажа"
 
     if avg_vol is None:
-        risk = "—"
+        # Волатильности ещё нет (истории мало) — считаем по рискам самих токенов,
+        # они оцениваются и без неё.
+        if not tokens:
+            risk = "—"
+        elif high_risk > len(tokens) / 2:
+            risk = "Повышенный"
+        elif high_risk or sum(1 for t in tokens if t["risk"] == "Средний") > len(tokens) / 2:
+            risk = "Умеренный"
+        else:
+            risk = "Низкий"
     elif avg_vol < 1.6 and high_risk <= 1:
         risk = "Низкий"
     elif avg_vol < 3.2 or high_risk <= len(tokens) // 2:
@@ -309,24 +317,22 @@ def _bucket(value, step):
     return round(value / step) * step
 
 
-def _price_bucket(price):
-    """Цена с точностью до трёх значащих цифр — примерно 1% шага."""
-    if not price:
-        return None
-    exp = math.floor(math.log10(abs(price)))
-    return round(price, max(0, 2 - exp))
-
-
 def notes_key(notes):
     """Контекст из Telegram — часть входа модели, значит и часть отпечатка."""
     return [n.get("id") for n in (notes or [])]
 
 
 def token_fingerprint(token, notes=None):
+    """Отпечаток входа модели.
+
+    Абсолютной цены здесь нет намеренно: она шевелится на доли процента каждые
+    пару минут, и вместе с ней разбор переписывался бы почти на каждом обновлении
+    котировок — по 40 секунд работы модели на токен. Смысл текста задают
+    изменения и уровень риска, а свежесть добирается TTL (CACHE_TTL_ANALYSIS).
+    """
     return fingerprint({
         "s": token["symbol"],
         "notes": notes_key(notes),
-        "p": _price_bucket(token["price"]),
         "d": _bucket(token["change_24h"], 0.5),
         "w": _bucket(token["change_7d"], 1.0),
         "r": token["risk"],

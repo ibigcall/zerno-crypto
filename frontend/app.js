@@ -56,6 +56,15 @@ const esc = (value) => String(value ?? '').replace(/[&<>"']/g,
 const color = (token) => (token.up ? UP : DOWN);
 const skeleton = (width) => `<span class="skeleton"${width ? ` style="width:${width}"` : ''}>&nbsp;</span>`;
 
+function fmtPrice(value) {
+  if (value == null) return '—';
+  const nbsp = ' ';
+  if (value >= 1000) return `$${Math.round(value).toLocaleString('ru-RU').replace(/\s/g, nbsp)}`;
+  if (value >= 1) return `$${value.toFixed(2)}`;
+  if (value >= 0.01) return `$${value.toFixed(4)}`;
+  return `$${value.toFixed(6)}`;
+}
+
 function dateLabel() {
   const now = new Date();
   return `${WEEKDAYS[now.getDay()]}, ${now.getDate()} ${MONTHS[now.getMonth()]}`;
@@ -190,7 +199,7 @@ function renderCards() {
       <p>${short}</p>
       <div class="foot">
         <span class="tag tag-neutral">риск: ${esc(t.risk.toLowerCase())}</span>
-        <span class="tag tag-neutral">неделя: ${esc(t.change_7d_text)}</span>
+        ${t.change_7d != null ? `<span class="tag tag-neutral">неделя: ${esc(t.change_7d_text)}</span>` : ''}
       </div>
     </article>`;
   }).join('');
@@ -207,7 +216,12 @@ function renderDetail() {
       <span class="sym">${esc(t.symbol.slice(0, 4))}</span>
       <div style="flex:1;min-width:0">
         <div class="title">${esc(t.name)}</div>
-        <div class="meta">${esc(t.price_text)} · ${esc(t.change_24h_text)} за сутки · ${esc(t.change_7d_text)} за неделю · колебания ${esc(t.volatility_label.toLowerCase())}</div>
+        <div class="meta">${[
+          esc(t.price_text),
+          `${esc(t.change_24h_text)} за сутки`,
+          t.change_7d != null ? `${esc(t.change_7d_text)} за неделю` : null,
+          t.volatility != null ? `колебания ${esc(t.volatility_label.toLowerCase())}` : null,
+        ].filter(Boolean).join(' · ')}</div>
       </div>
       <span class="tag tag-accent">риск: ${esc(t.risk.toLowerCase())}</span>
       <button class="btn btn-ghost" data-remove="${esc(t.symbol)}" type="button">Убрать из списка</button>
@@ -245,15 +259,23 @@ function renderFocus() {
   $('fSpark').classList.toggle('hidden', !t.spark);
   $('fNoSpark').classList.toggle('hidden', !!t.spark);
 
-  $('fMetrics').innerHTML = [
-    ['За неделю', t.change_7d_text, (t.change_7d || 0) >= 0 ? UP : DOWN],
-    ['Объём за сутки', t.volume_text, ''],
-    ['Колебания', t.volatility_label, ''],
-    ['Риск', t.risk, 'var(--color-accent-700)'],
-  ].map(([label, value, col]) => `<div>
+  // Показываем только те метрики, по которым есть данные: тариф провайдера
+  // может не отдавать ни объём, ни историю.
+  const metrics = [];
+  if (t.change_7d != null) {
+    metrics.push(['За неделю', t.change_7d_text, t.change_7d >= 0 ? UP : DOWN]);
+  }
+  if (t.day_low && t.day_high) {
+    metrics.push(['Диапазон за сутки', `${fmtPrice(t.day_low)} – ${fmtPrice(t.day_high)}`, '']);
+  }
+  if (t.volume) metrics.push(['Объём за сутки', t.volume_text, '']);
+  if (t.volatility != null) metrics.push(['Колебания', t.volatility_label, '']);
+  metrics.push(['Риск', t.risk, 'var(--color-accent-700)']);
+  $('fMetrics').innerHTML = metrics.map(([label, value, col]) => `<div>
       <div class="label">${esc(label)}</div>
       <div class="value"${col ? ` style="color:${col}"` : ''}>${esc(value)}</div>
     </div>`).join('');
+  $('fMetrics').style.gridTemplateColumns = `repeat(${Math.min(metrics.length, 4)}, minmax(0, 1fr))`;
 
   $('fSummary').innerHTML = a ? `${esc(a.summary)} ${sourceNote(a)}`
     : (pending ? skeleton() : '<span class="text-muted">Разбор не собран.</span>');
