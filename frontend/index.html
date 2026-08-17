@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Зерно · крипто-аналитика</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Caprasimo&family=Figtree:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="vendor/organic.css">
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+
+<div class="shell">
+  <aside class="side">
+    <div class="brand">
+      <div class="brand-mark" aria-hidden="true">З</div>
+      <div>
+        <div class="brand-name">Зерно</div>
+        <div class="brand-sub">ваш разбор рынка</div>
+      </div>
+    </div>
+
+    <div class="stack">
+      <div class="row-between">
+        <div class="kicker">Что смотрим</div>
+        <div class="kicker" id="countLabel">—</div>
+      </div>
+      <label class="field" style="margin:0">
+        <span class="hidden">Найти токен</span>
+        <input class="input" id="filter" type="search" placeholder="Найти токен" autocomplete="off">
+      </label>
+      <div class="stack-tight" id="sideList"></div>
+    </div>
+
+    <form class="stack-tight" id="addForm">
+      <input class="input" id="addSymbol" placeholder="Тикер, например SUI" maxlength="15" autocomplete="off">
+      <button class="btn btn-secondary btn-block" type="submit" id="addBtn">Добавить токен</button>
+    </form>
+
+    <div class="side-foot">
+      <span class="dot-badge" id="sourceBadge"><i></i><span>источник данных</span></span>
+      <span class="dot-badge" id="llmBadge"><i></i><span>модель</span></span>
+      <span id="updatedNote">Котировки ещё не загружены.</span>
+      <span>Разбор — это взгляд со стороны, а не совет, куда вложить.</span>
+    </div>
+  </aside>
+
+  <main class="main">
+    <header class="page-head">
+      <div>
+        <div class="kicker kicker-accent" id="dateLabel">—</div>
+        <h2 id="headline"><span class="skeleton" style="width:14ch">&nbsp;</span></h2>
+      </div>
+      <div class="head-actions">
+        <div class="seg" role="group" aria-label="Вид">
+          <label class="seg-opt"><input type="radio" name="view" value="grid" checked>Грядка</label>
+          <label class="seg-opt"><input type="radio" name="view" value="focus">Один крупно</label>
+        </div>
+        <button class="btn btn-secondary" id="refreshBtn" type="button">Обновить котировки</button>
+        <button class="btn btn-primary" id="analyzeBtn" type="button">Обновить разбор</button>
+      </div>
+    </header>
+
+    <div class="warn hidden" id="warnBox"></div>
+
+    <section class="summary">
+      <p id="summaryText"><span class="skeleton">&nbsp;</span></p>
+      <div class="summary-side">
+        <div>
+          <div class="label">Настроение выборки</div>
+          <div class="value kicker-sage" id="moodValue" style="text-transform:none;letter-spacing:0">—</div>
+        </div>
+        <div>
+          <div class="label">Риск</div>
+          <div class="value kicker-accent" id="riskValue" style="text-transform:none;letter-spacing:0">—</div>
+        </div>
+        <div id="fgBlock" class="hidden">
+          <div class="label">Страх и жадность</div>
+          <div class="value" id="fgValue" style="text-transform:none;letter-spacing:0">—</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- вид «грядка карточек» -->
+    <section id="viewGrid" class="stack" style="gap:22px">
+      <div class="cards" id="cards"></div>
+      <article class="detail" id="detail"></article>
+    </section>
+
+    <!-- вид «один крупно» -->
+    <section id="viewFocus" class="focus hidden">
+      <div class="stack" style="gap:22px">
+        <header class="focus-head">
+          <span class="sym" id="fSym">—</span>
+          <div style="flex:1">
+            <div class="kicker kicker-accent" id="fKicker">Разбор</div>
+            <h3 id="fName">—</h3>
+          </div>
+          <div style="text-align:right">
+            <div class="focus-price" id="fPrice">—</div>
+            <div id="fChange" style="font-size:15px;font-weight:700;font-variant-numeric:tabular-nums">—</div>
+          </div>
+        </header>
+
+        <div class="chart-card">
+          <svg class="spark spark-lg" id="fSpark" viewBox="0 0 120 34" preserveAspectRatio="none" aria-hidden="true">
+            <polyline fill="none" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"></polyline>
+          </svg>
+          <div class="spark spark-lg no-spark hidden" id="fNoSpark">график появится, когда наберётся история</div>
+          <div class="metrics" id="fMetrics"></div>
+        </div>
+
+        <div>
+          <div class="kicker">Если коротко</div>
+          <p id="fSummary" style="margin:8px 0 0;font-size:17px;line-height:1.62;max-width:64ch;text-wrap:pretty"></p>
+        </div>
+
+        <div class="pro-contra">
+          <div class="box-sage">
+            <div class="kicker kicker-sage">Что за</div>
+            <p id="fPro" style="margin-top:8px"></p>
+          </div>
+          <div class="box-clay">
+            <div class="kicker kicker-accent">Что против</div>
+            <p id="fContra" style="margin-top:8px"></p>
+          </div>
+        </div>
+      </div>
+
+      <aside class="stack" style="gap:15px">
+        <div class="row-between">
+          <div class="kicker">Остальные в списке</div>
+          <div class="kicker" id="fCount">—</div>
+        </div>
+        <div class="mini-list" id="miniList"></div>
+      </aside>
+    </section>
+
+    <!-- рыночный контекст из Telegram -->
+    <section class="stack" style="gap:11px">
+      <div class="row-between">
+        <div class="kicker">Рыночный контекст</div>
+        <div class="kicker" id="notesCount">—</div>
+      </div>
+      <p class="text-muted" style="margin:0;font-size:13.5px;max-width:70ch">
+        Всё, что прислано боту в Telegram — пересланные посты, свои наблюдения — попадает
+        сюда и уходит в модель вместе с числами.
+      </p>
+      <div class="notes" id="notes"></div>
+      <form class="stack-tight" id="noteForm" style="max-width:640px">
+        <textarea class="input" id="noteText" rows="2" placeholder="Добавить наблюдение вручную"></textarea>
+        <button class="btn btn-secondary" type="submit" style="align-self:flex-start">Добавить в контекст</button>
+      </form>
+    </section>
+  </main>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>

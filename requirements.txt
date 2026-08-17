@@ -1,0 +1,5 @@
+Flask==3.0.0
+requests==2.32.3
+python-dotenv==1.0.0
+python-telegram-bot==20.7
+waitress==3.0.0
