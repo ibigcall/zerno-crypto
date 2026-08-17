@@ -147,9 +147,10 @@ def _portfolio_facts(snapshot, notes=None):
         lines.append(f"Индекс страха и жадности: {fg['index']} ({fg.get('emotion')})")
     lines.append("Отдельные токены:")
     for t in snapshot["tokens"]:
+        week = f", за неделю {t['change_7d_text']}" if t["change_7d"] is not None else ""
         lines.append(
             f"— {t['name']} ({t['symbol']}): {t['price_text']}, за сутки {t['change_24h_text']} "
-            f"({_direction(t['change_24h']).lower()}), за неделю {t['change_7d_text']}, "
+            f"({_direction(t['change_24h']).lower()}){week}, "
             f"риск {t['risk'].lower()}, {t['trend']}"
         )
     if notes:
@@ -169,41 +170,43 @@ PORTFOLIO_TASK = """{facts}
 
 # ── разбор одного токена ─────────────────────────────────────────────────────
 
-def cached_token(token, notes=None):
+def cached_token(scope, token, notes=None):
     fp = market.token_fingerprint(token, notes)
-    return db.analysis_get(token["symbol"], "token", fp, config.CACHE_TTL_ANALYSIS)
+    return db.analysis_get(scope, token["symbol"], "token", fp, config.CACHE_TTL_ANALYSIS)
 
 
 def cached_portfolio(snapshot, notes=None):
     fp = market.portfolio_fingerprint(snapshot, notes)
-    return db.analysis_get(snapshot["scope"], "portfolio", fp, config.CACHE_TTL_ANALYSIS)
+    return db.analysis_get(snapshot["scope"], "portfolio", "portfolio", fp,
+                           config.CACHE_TTL_ANALYSIS)
 
 
 def attach_cached(snapshot, notes=None):
     """Прицепить к снимку уже готовые разборы, не запуская модель."""
     for token in snapshot["tokens"]:
-        token["analysis"] = cached_token(token, notes)
+        token["analysis"] = cached_token(snapshot["scope"], token, notes)
     snapshot["analysis"] = cached_portfolio(snapshot, notes)
     snapshot["disclaimer"] = DISCLAIMER
     return snapshot
 
 
-def analyze_token(token, extra=None, force=False):
+def analyze_token(scope, token, extra=None, force=False):
     fp = market.token_fingerprint(token, (extra or {}).get("notes"))
     if not force:
-        cached = db.analysis_get(token["symbol"], "token", fp, config.CACHE_TTL_ANALYSIS)
+        cached = db.analysis_get(scope, token["symbol"], "token", fp, config.CACHE_TTL_ANALYSIS)
         if cached:
             return cached
 
     with _LLM_LOCK:
         if not force:
-            cached = db.analysis_get(token["symbol"], "token", fp, config.CACHE_TTL_ANALYSIS)
+            cached = db.analysis_get(scope, token["symbol"], "token", fp,
+                                     config.CACHE_TTL_ANALYSIS)
             if cached:
                 return cached
-        return _analyze_token_locked(token, extra, fp)
+        return _analyze_token_locked(scope, token, extra, fp)
 
 
-def _analyze_token_locked(token, extra, fp):
+def _analyze_token_locked(scope, token, extra, fp):
     payload, source, model = None, "rules", None
     try:
         data = ollama_client.chat_json(
@@ -222,7 +225,7 @@ def _analyze_token_locked(token, extra, fp):
         log.warning("LLM-разбор %s не удался: %s", token["symbol"], exc)
         payload = _token_rules(token)
 
-    db.analysis_put(token["symbol"], "token", fp, payload, model, source)
+    db.analysis_put(scope, token["symbol"], "token", fp, payload, model, source)
     out = dict(payload)
     out["_source"] = source
     out["_model"] = model
@@ -232,12 +235,13 @@ def _analyze_token_locked(token, extra, fp):
 def analyze_portfolio(snapshot, notes=None, force=False):
     fp = market.portfolio_fingerprint(snapshot, notes)
     if not force:
-        cached = db.analysis_get(snapshot["scope"], "portfolio", fp, config.CACHE_TTL_ANALYSIS)
+        cached = db.analysis_get(snapshot["scope"], "portfolio", "portfolio", fp,
+                                 config.CACHE_TTL_ANALYSIS)
         if cached:
             return cached
     with _LLM_LOCK:
         if not force:
-            cached = db.analysis_get(snapshot["scope"], "portfolio", fp,
+            cached = db.analysis_get(snapshot["scope"], "portfolio", "portfolio", fp,
                                      config.CACHE_TTL_ANALYSIS)
             if cached:
                 return cached
@@ -263,7 +267,8 @@ def _analyze_portfolio_locked(snapshot, notes, fp):
         log.warning("LLM-сводка не удалась: %s", exc)
         payload = _portfolio_rules(snapshot)
 
-    db.analysis_put(snapshot["scope"], "portfolio", fp, payload, model, source)
+    db.analysis_put(snapshot["scope"], "portfolio", "portfolio", fp, payload,
+                    model, source)
     out = dict(payload)
     out["_source"] = source
     out["_model"] = model

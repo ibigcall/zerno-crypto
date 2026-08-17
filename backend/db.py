@@ -25,15 +25,19 @@ CREATE TABLE IF NOT EXISTS api_cache (
     fetched_at REAL NOT NULL
 );
 
+-- Разбор кэшируется на область данных: у веба и у каждого чата свой рыночный
+-- контекст, а значит и свой текст. Без scope в ключе разбор из Telegram
+-- перезатирал бы веб-разбор и наоборот.
 CREATE TABLE IF NOT EXISTS analysis (
-    symbol      TEXT NOT NULL,
+    scope       TEXT NOT NULL,
+    symbol      TEXT NOT NULL,          -- тикер либо 'portfolio'
     kind        TEXT NOT NULL,          -- token | portfolio
     fingerprint TEXT NOT NULL,          -- отпечаток входных данных
     payload     TEXT NOT NULL,
     model       TEXT,
     source      TEXT,                   -- llm | rules
     created_at  REAL NOT NULL,
-    PRIMARY KEY (symbol, kind)
+    PRIMARY KEY (scope, symbol, kind)
 );
 
 CREATE TABLE IF NOT EXISTS tg_users (
@@ -82,9 +86,26 @@ def conn():
 
 def init():
     c = conn()
+    _migrate(c)
     c.executescript(SCHEMA)
     c.commit()
     seed_scope("web", config.DEFAULT_WATCHLIST)
+
+
+def _migrate(c):
+    """Схема кэша разборов менялась: в ключ добавилась область данных.
+
+    Таблица целиком производная — проще пересобрать её, чем переливать строки.
+    """
+    exists = c.execute(
+        "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'analysis'"
+    ).fetchone()
+    if not exists:
+        return
+    columns = {row[1] for row in c.execute("PRAGMA table_info(analysis)")}
+    if "scope" not in columns:
+        c.execute("DROP TABLE analysis")
+        c.commit()
 
 
 # ── списки наблюдения ─────────────────────────────────────────────────────────
@@ -209,11 +230,11 @@ def price_recent(symbol, limit=48):
 
 # ── кэш разборов LLM ─────────────────────────────────────────────────────────
 
-def analysis_get(symbol, kind, fingerprint, ttl):
+def analysis_get(scope, symbol, kind, fingerprint, ttl):
     row = conn().execute(
         "SELECT payload, model, source, created_at, fingerprint FROM analysis"
-        " WHERE symbol = ? AND kind = ?",
-        (symbol, kind),
+        " WHERE scope = ? AND symbol = ? AND kind = ?",
+        (scope, symbol, kind),
     ).fetchone()
     if not row:
         return None
@@ -231,16 +252,17 @@ def analysis_get(symbol, kind, fingerprint, ttl):
     return data
 
 
-def analysis_put(symbol, kind, fingerprint, payload, model, source):
+def analysis_put(scope, symbol, kind, fingerprint, payload, model, source):
     c = conn()
     c.execute(
-        "INSERT INTO analysis (symbol, kind, fingerprint, payload, model, source, created_at)"
-        " VALUES (?, ?, ?, ?, ?, ?, ?)"
-        " ON CONFLICT(symbol, kind) DO UPDATE SET fingerprint = excluded.fingerprint,"
+        "INSERT INTO analysis"
+        " (scope, symbol, kind, fingerprint, payload, model, source, created_at)"
+        " VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+        " ON CONFLICT(scope, symbol, kind) DO UPDATE SET fingerprint = excluded.fingerprint,"
         " payload = excluded.payload, model = excluded.model, source = excluded.source,"
         " created_at = excluded.created_at",
-        (symbol, kind, fingerprint, json.dumps(payload, ensure_ascii=False), model, source,
-         time.time()),
+        (scope, symbol, kind, fingerprint, json.dumps(payload, ensure_ascii=False), model,
+         source, time.time()),
     )
     c.commit()
 

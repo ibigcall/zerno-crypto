@@ -120,7 +120,7 @@ def analysis():
         if not token:
             raise ApiError(f"{sym} нет в списке наблюдения", 404)
         extra = analyst.extra_for(snap, token, notes)
-        result = analyst.analyze_token(token, extra, force=force)
+        result = analyst.analyze_token(scope, token, extra, force=force)
         return jsonify({"ok": True, "kind": "token", "symbol": sym, "analysis": result})
 
     raise ApiError("Неизвестный тип разбора")
@@ -135,7 +135,7 @@ def digest():
     notes = db.notes_list(scope, limit=5, max_age=7 * 86400)
     snap["analysis"] = analyst.analyze_portfolio(snap, notes, force=force)
     for token in snap["tokens"]:
-        token["analysis"] = analyst.cached_token(token, notes)
+        token["analysis"] = analyst.cached_token(scope, token, notes)
     snap["disclaimer"] = analyst.DISCLAIMER
     snap["ok"] = True
     return jsonify(snap)
